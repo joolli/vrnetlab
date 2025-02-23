@@ -103,7 +103,17 @@ class Dell_Sonic_VM(vrnetlab.VM):
         """Do the actual bootstrap config"""
         self.logger.info("applying bootstrap configuration")
         self.wait_write("sudo -i", "$")
-        self.wait_write("/usr/sbin/ip address add 10.0.0.15/24 dev eth0", "#")
+
+        # set ipv4/6 address of the management interface if it is not managed by dhcp
+        if not self.mgmt_address_ipv4 == "dhcp":
+            self.wait_write(
+                f"sudo /usr/sbin/ip address add {self.mgmt_address_ipv4} dev eth0", "#"
+            )
+        if not self.mgmt_address_ipv4 == "dhcp":
+            # note, v6 address is not being applied for whatever reason
+            self.wait_write(
+                f"sudo /usr/sbin/ip -6 address add {self.mgmt_address_ipv6} dev eth0", "#"
+            )
         self.wait_write("passwd -q %s" % (self.username))
         self.wait_write(self.password, "New password:")
         self.wait_write(self.password, "password:")
@@ -121,10 +131,14 @@ class Dell_Sonic_VM(vrnetlab.VM):
         """Load additional config provided by user."""
 
         if not os.path.exists(CONFIG_FILE):
-            self.logger.trace(f"Backup file {CONFIG_FILE} not found")
+            self.logger.trace(
+                f"Startup config file {CONFIG_FILE} is not provided, nothing to do"
+            )
             return
 
-        self.logger.trace(f"Backup file {CONFIG_FILE} exists")
+        self.logger.trace(
+            f"Startup config file {CONFIG_FILE} found, copying it to the VM"
+        )
 
         subprocess.run(
             f"/backup.sh -u {self.username} -p {self.password} restore",

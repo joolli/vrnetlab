@@ -198,12 +198,12 @@ OS10 login: admin
 Password:      
 ```
 
-5. After the login (username: *admin*, password: *admin*), once the system is ready and the prompt appears, you need to **stop ztd** with the command `ztd cancel`. Then, `write memory` and `reload`.
+5. After the login (username: *admin*, password: *admin* or *linuxadmin*/*linuxadmin* followed by *su admin*), once the system is ready and the prompt appears, you need to **stop ztd** with the command `ztd cancel`. Then, `write memory` and `reload`.
 6. Once the reload is completed, you can shutdown the qemu-system host as the image has been built. With 10.5.2.4, it creates an image of approximately 7G.
-7. Next is to convert from vmdk to qcow2.
+7. Next is to convert from vmdk to qcow2 (tip: try adding "-c" for compression, may reduce qcow2 size to ~30%)
 
 ```bash
-qemu-img convert -f vmdk -O qcow2 OS10-Disk-1.0.0.vmdk dellftos.{VERSION}.qcow2
+qemu-img convert -f vmdk -O qcow2 -c OS10-Disk-1.0.0.vmdk dellftos.{VERSION}.qcow2
 ```
 
 Once this is complete, you'll be left with a qcow2 image that can then be built with the make command. To help validate output, here are the sizes of the 2 files.
@@ -233,4 +233,3 @@ NOTE:
 * CPU: 4 core
 * RAM: 4GB
 * Disk: <10GB
-

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 import datetime
+import ftplib
 import logging
 import os
 import re
 import signal
 import sys
-import ftplib
 
 import vrnetlab
 
@@ -56,7 +56,7 @@ class ROS_vm(vrnetlab.VM):
         self.qemu_args.extend(["-boot", "n"])
         self.hostname = hostname
         self.conn_mode = conn_mode
-        self.nic_type = "virtio-net" # "e1000" is default but breaks mtu > 1500 on vlan subinterfaces on RouterOS 6.x.x
+        self.nic_type = "virtio-net"  # "e1000" is default but breaks mtu > 1500 on vlan subinterfaces on RouterOS 6.x.x
         self.num_nics = 31
 
         # set up bridge for management interface to a localhost
@@ -84,7 +84,7 @@ class ROS_vm(vrnetlab.VM):
         res.append("-device")
 
         res.append(
-            self.nic_type + ",netdev=br-mgmt,mac=%(mac)s" % {"mac": vrnetlab.gen_mac(0)}
+            self.nic_type + ",netdev=br-mgmt,mac=%(mac)s" % {"mac": self.get_mgmt_mac()}
         )
         res.append("-netdev")
         res.append("bridge,br=br-mgmt,id=br-mgmt" % {"i": 0})
@@ -279,4 +279,4 @@ if __name__ == "__main__":
         args.password,
         conn_mode=args.connection_mode,
     )
-    vr.start(add_fwd_rules=False)
+    vr.start()

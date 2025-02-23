@@ -8,7 +8,7 @@ Ask your Nokia representative for the VSR/VSIM image.
 Copy the `sros-vm.qcow2` file in `vrnetlab/sros` directory and rename the file by appending the SR OS version to it.  
 For example, for SR OS version 20.10.r1 make sure that the qcow2 file will be named as `sros-vm-20.10.R1.qcow2`. The version (20.10.R1) will be used as a container image tag.
 
-Run `make docker-image` to start the build process. The resulting image is called `vrnetlab/vr-sros:<version>`. You can tag it with something else if needed, like `vr-sros:<version>`.
+Run `make docker-image` to start the build process. The resulting image is called `vrnetlab/nokia_sros:<version>`. You can tag it with something else if needed, like `nokia_sros:<version>`.
 
 It's been tested to run with the following versions:
 
@@ -35,6 +35,7 @@ By selecting a certain variant (referred by its `name`) the VSIM will start with
 |  sr-7s-fp4   | distributed |      sfm-s+xcm-7s      |           s36-100gb-qsfp28           |   4+6    |    36    |
 |    sr-14s    | distributed |     sfm-s+xcm-14s      |           s36-100gb-qsfp28           |   4+6    |    36    |
 |    sr-a4     | distributed |         cpm-a          |       maxp10-10/1gb-msec-sfp+        |   4+4    |    10    |
+|  sr-7-secgw  | distributed |          cpm5          |  me12-10/1gb-sfp+ and isa2-tunnel    |   4+6    |    16    |
 | ixr-e-small  | distributed | imm14-10g-sfp++4-1g-tx |         m14-10g-sfp++4-1g-tx         |   3+4    |    18    |
 |  ixr-e-big   | distributed |       cpm-ixr-e        |      m24-sfp++8-sfp28+2-qsfp28       |   3+4    |    34    |
 |    ixr-e2    | integrated  |       cpm-ixr-e2       |     m2-qsfpdd+2-qsfp28+24-sfp28      |    4     |    34    |
@@ -42,6 +43,9 @@ By selecting a certain variant (referred by its `name`) the VSIM will start with
 |   ixr-e2c    | integrated  |      cpm-ixr-e2c       |          m12-sfp28+2-qsfp28          |    4     |    34    |
 |    ixr-r6    | integrated  |      cpiom-ixr-r6      |      m6-10g-sfp++1-100g-qsfp28       |    6     |    10    |
 |    ixr-s     | integrated  |       cpm-ixr-s        |          m48-sfp++6-qsfp28           |   3+4    |    54    |
+|    ixr-x1    | integrated  |       cpm-ixr-x        |        imm32-qsfp28+4-qsfpdd         |   3+4    |    36    |
+|    ixr-xs    | integrated  |       cpm-ixr-x        |         imm6-qsfpdd+48-sfp56         |   3+4    |    54    |
+|    ixr-x3    | integrated  |       cpm-ixr-x        |             imm36-qsfpdd             |   4+5    |    36    |
 |   sr-1-46s   | distributed |         cpm-1x         |    m40-200g-sfpdd+6-800g-qsfpdd-1    |    4     |    48    |
 |   sr-1-92s   | distributed |         cpm-1x         |   m80-200g-sfpdd+12-400g-qsfpdd-1    |    4     |    48    |
 |  sr-1x-92s   | distributed |         cpm-1x         |   m80-200g-sfpdd+12-800g-qsfpdd-1x   |    4     |    48    |
@@ -100,11 +104,12 @@ r01/
     ├── config.txt
     └── license.txt
 ```
+
 NOTE: If only CF2 is provisioned, node will remap it to CF1.
 
 ## Usage with containerlab
 
-Refer to containerlab documentation piece on [vrnetlab integration](https://containerlab.srlinux.dev/manual/vrnetlab/) and vr-sros.
+Refer to containerlab documentation article on [vrnetlab integration](https://containerlab.dev/manual/vrnetlab/) and Containerlab.
 
 ## Extracting qcow2 disk image from a container image
 
@@ -113,7 +118,7 @@ It is possible to extract the original qcow2 disk image from an existing contain
 The following script takes an image name and the qcow2 image name to copy out from the container image:
 
 ```bash
-IMAGE=registry.srlinux.dev/pub/vr-sros:23.7.R1
+IMAGE=registry.srlinux.dev/pub/nokia_sros:24.10.R1
 VERSION=$(cut -d ':' -f 2 <<< $IMAGE)
 docker create --name sros-copy $IMAGE
 docker cp sros-copy:sros-vm-$VERSION.qcow2 .

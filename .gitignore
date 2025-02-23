@@ -2,10 +2,12 @@
 .idea
 venv
 *.qcow2
+cisco*.bin
 *.gz
 *.xz
 *.vmdk
 *.iso
+*cidfile
 
 .DS_Store
 */.DS_Store
