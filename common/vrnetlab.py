@@ -104,9 +104,11 @@ class VM:
         cpu="host",
         smp="1",
         mgmt_passthrough=False,
+        mgmt_intf="eth0",
         mgmt_dhcp=False,
         min_dp_nics=0,
         use_scrapli=False,
+        data_intf_prefix="eth"
     ):
         self.use_scrapli = use_scrapli
 
@@ -119,7 +121,11 @@ class VM:
         will write all channel i/o as DEBUG log level.
         """
         self.scrapli_logger = logging.getLogger("scrapli")
-        self.scrapli_logger.setLevel(logging.INFO)
+        
+        scrapli_log_level = logging.DEBUG if os.getenv("DEBUG_SCRAPLI", "false").lower() == "true" else logging.INFO
+        self.scrapli_logger.setLevel(scrapli_log_level)
+        
+        
 
         # configure scrapli
         if self.use_scrapli:
@@ -166,6 +172,7 @@ class VM:
         self._ram = ram
         self._cpu = cpu
         self._smp = smp
+        self.mgmt_intf = os.environ.get("CLAB_MGMT_INTF", mgmt_intf)
 
         # various settings
         self.uuid = None
@@ -195,6 +202,9 @@ class VM:
             if os.environ.get("CLAB_MGMT_DHCP")
             else mgmt_dhcp
         )
+
+        # Check if CLAB_INTF_PREFIX environment variable is set
+        self.data_intf_prefix = os.environ.get("CLAB_INTF_PREFIX", data_intf_prefix)
 
         # Populate management IP and gateway
         # If CLAB_MGMT_DHCP environment variable is set, we assume that a DHCP client
@@ -233,8 +243,9 @@ class VM:
         #  8080  - sonic gnmi/gnoi, other http apis
         #  9339  - iana gnmi/gnoi
         #  32767 - gnmi/gnoi juniper
+        #  50051 - cisco nx-os gnmi/gnoi
         #  57400 - nokia gnmi/gnoi
-        self.mgmt_tcp_ports = [80, 443, 830, 6030, 8080, 9339, 32767, 57400]
+        self.mgmt_tcp_ports = [80, 443, 830, 6030, 8080, 9339, 32767, 50051, 57400]
 
         # we setup pci bus by default
         self.provision_pci_bus = provision_pci_bus
@@ -433,12 +444,14 @@ class VM:
         ip link set $TAP_IF mtu 65000
 
         # create tc eth<->tap redirect rules
-        tc qdisc add dev eth$INDEX clsact
-        tc filter add dev eth$INDEX ingress flower action mirred egress redirect dev tap$INDEX
+        tc qdisc add dev {INTF_PREFIX}$INDEX clsact
+        tc filter add dev {INTF_PREFIX}$INDEX ingress flower action mirred egress redirect dev tap$INDEX
 
         tc qdisc add dev $TAP_IF clsact
-        tc filter add dev $TAP_IF ingress flower action mirred egress redirect dev eth$INDEX
+        tc filter add dev $TAP_IF ingress flower action mirred egress redirect dev {INTF_PREFIX}$INDEX
         """
+        
+        ifup_script = ifup_script.replace("{INTF_PREFIX}", self.data_intf_prefix)
 
         with open("/etc/tc-tap-ifup", "w") as f:
             f.write(ifup_script)
@@ -453,22 +466,23 @@ class VM:
 
         # create tc eth<->tap redirect rules
 
-        tc qdisc add dev eth0 clsact
+        tc qdisc add dev {MGMT_INTF} clsact
         # exception for TCP ports 5000-5007
-        tc filter add dev eth0 ingress prio 1 protocol ip flower ip_proto tcp dst_port 5000-5007 action pass
+        tc filter add dev {MGMT_INTF} ingress prio 1 protocol ip flower ip_proto tcp dst_port 5000-5007 action pass
         # mirror ARP traffic to container
-        tc filter add dev eth0 ingress prio 2 protocol arp flower action mirred egress mirror dev tap0
+        tc filter add dev {MGMT_INTF} ingress prio 2 protocol arp flower action mirred egress mirror dev tap0
         # redirect rest of ingress traffic of eth0 to egress of tap0
-        tc filter add dev eth0 ingress prio 3 flower action mirred egress redirect dev tap0
+        tc filter add dev {MGMT_INTF} ingress prio 3 flower action mirred egress redirect dev tap0
 
         tc qdisc add dev tap0 clsact
         # redirect all ingress traffic of tap0 to egress of eth0
-        tc filter add dev tap0 ingress flower action mirred egress redirect dev eth0
+        tc filter add dev tap0 ingress flower action mirred egress redirect dev {MGMT_INTF}
 
         # clone management MAC of the VM
-        ip link set dev eth0 address {MGMT_MAC}
+        ip link set dev {MGMT_INTF} address {MGMT_MAC}
         """
 
+        ifup_script = ifup_script.replace("{MGMT_INTF}", self.mgmt_intf)
         ifup_script = ifup_script.replace("{MGMT_MAC}", self.mgmt_mac)
 
         with open("/etc/tc-tap-mgmt-ifup", "w") as f:
@@ -492,6 +506,7 @@ class VM:
           8080  - sonic gnmi/gnoi, other http apis
           9339  - iana gnmi/gnoi
           32767 - gnmi/gnoi juniper
+          50051 - cisco nx-os gnmi/gnoi
           57400 - nokia gnmi/gnoi
         """
         if self.mgmt_host_ip + 1 >= self.mgmt_guest_ip:
@@ -602,7 +617,7 @@ class VM:
 
         inf_path = Path("/sys/class/net/")
         while True:
-            provisioned_nics = list(inf_path.glob("eth*"))
+            provisioned_nics = list(inf_path.glob(f"{self.data_intf_prefix}*"))
             # if we see num provisioned +1 (for mgmt) we have all nics ready to roll!
             if len(provisioned_nics) >= self.num_provisioned_nics + 1:
                 nics = [
@@ -685,7 +700,7 @@ class VM:
             addr = (x % self.nics_per_pci_bus) + 1
 
             # if the matching container interface ethX doesn't exist, we don't create a nic
-            if not os.path.exists(f"/sys/class/net/eth{i}"):
+            if not os.path.exists(f"/sys/class/net/{self.data_intf_prefix}{i}"):
                 if i >= self.highest_provisioned_nic_num:
                     continue
 
