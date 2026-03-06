@@ -3,8 +3,10 @@
 import datetime
 import logging
 import os
+import random
 import re
 import signal
+import string
 import subprocess
 import sys
 
@@ -81,9 +83,27 @@ class cat9kv_vm(vrnetlab.VM):
             )
 
         try:
-            os.popen("cp /vswitch.xml /img_dir/conf/")
-        except:
-            self.logger.debug("No vswitch.xml file provided.")
+            # Load vswitch.xml and randomize serial number
+            if os.path.exists("/vswitch.xml"):
+                with open("/vswitch.xml", "r") as f:
+                    vswitch_content = f.read()
+
+                random_serial = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
+
+                vswitch_content = re.sub(
+                    r'<prod_serial_number>.*?</prod_serial_number>',
+                    f'<prod_serial_number>{random_serial}</prod_serial_number>',
+                    vswitch_content
+                    )
+
+                with open("/img_dir/conf/vswitch.xml", "w") as f:
+                    f.write(vswitch_content)
+
+                self.logger.info(f"Generated vswitch.xml with randomized serial number: {random_serial}")
+            else:
+                self.logger.debug("No vswitch.xml file provided.")
+        except Exception as e:
+            self.logger.error(f"Error processing vswitch.xml: {e}")
 
         v4_mgmt_address = vrnetlab.cidr_to_ddn(self.mgmt_address_ipv4)
 
@@ -198,7 +218,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--username", default="vrnetlab", help="Username")
     parser.add_argument("--password", default="VR-netlab9", help="Password")
-    parser.add_argument("--hostname", default="cat9kv", help="Router hostname")
+    parser.add_argument("--hostname", default="", help="Router hostname")
     parser.add_argument(
         "--connection-mode",
         default="vrxcon",
@@ -216,6 +236,18 @@ if __name__ == "__main__":
     logger.setLevel(logging.DEBUG)
     if args.trace:
         logger.setLevel(1)
+
+    # Auto-detect hostname from image filename if not provided
+    if not args.hostname:
+        for e in os.listdir("/"):
+            if re.search(r"\.qcow2$", e):
+                if re.search(r"c9800", e, re.IGNORECASE):
+                    args.hostname = "c9800cl"
+                else:
+                    args.hostname = "cat9kv"
+                break
+        if not args.hostname:
+            args.hostname = "cat9kv"
 
     vr = cat9kv(
         args.hostname,

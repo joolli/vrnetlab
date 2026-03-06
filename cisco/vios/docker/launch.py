@@ -38,7 +38,10 @@ logging.Logger.trace = trace
 
 
 class VIOS_vm(vrnetlab.VM):
-    def __init__(self, hostname: str, username: str, password: str, conn_mode: str):
+    def __init__(self, hostname: str, username: str, password: str, conn_mode: str, device_type: str = None):
+        # Set up logger early
+        self.logger = logging.getLogger()
+
         disk_image = None
         for e in os.listdir("/"):
             if re.search(".qcow2$", e):
@@ -46,18 +49,36 @@ class VIOS_vm(vrnetlab.VM):
         if not disk_image:
             raise Exception("No disk image found")
 
+        # Determine device type and configure accordingly
+        if device_type is None:
+            # Auto-detect from image filename
+            device_type = "switch" if re.search(r"(viosl2|vios_l2)", disk_image, re.IGNORECASE) else "router"
+            self.logger.info(f"Auto-detected device type '{device_type}' from image: {disk_image}")
+
+        # Configure based on device type
+        match device_type:
+            case "switch":
+                ram = 768
+                self.logger.info("Configuring switch with 768MB RAM")
+            case "router":
+                ram = 512
+                self.logger.info("Configuring router with 512MB RAM")
+            case _:
+                raise ValueError(f"Invalid device_type '{device_type}'. Must be 'router' or 'switch'")
+
         super(VIOS_vm, self).__init__(
             username=username,
             password=password,
             disk_image=disk_image,
             smp="1",
-            ram=512,
+            ram=ram,
             driveif="virtio",
             use_scrapli=True,
         )
 
         self.hostname = hostname
         self.conn_mode = conn_mode
+        self.device_type = device_type
         # device supports up to 16 interfaces (1 management interface + 15 data interfaces)
         self.num_nics = 15
         self.running = False
@@ -70,11 +91,14 @@ class VIOS_vm(vrnetlab.VM):
             self.start()
             return
 
+        # Expect different prompt based on device type
+        device_prompt = b"Switch>" if self.device_type == "switch" else b"Router>"
+
         (ridx, match, res) = self.con_expect(
             [
                 rb"Would you like to enter the initial configuration dialog\? \[yes/no\]:",
                 b"Press RETURN to get started!",
-                b"Router>",
+                device_prompt,
             ],
         )
 
@@ -122,69 +146,17 @@ class VIOS_vm(vrnetlab.VM):
             "timeout_ops": scrapli_timeout,
         }
 
-        v4_mgmt_address = vrnetlab.cidr_to_ddn(self.mgmt_address_ipv4)
-
-        vios_config = f"""hostname {self.hostname}
-username {self.username} privilege 15 password {self.password}
-ip domain-name example.com
-no ip domain-lookup
-!
-line con 0
-logging synchronous
-exec timeout 0 0
-!
-line vty 0 4
-logging synchronous
-login local
-transport input all
-exec timeout 0 0
-!
-ipv6 unicast-routing
-!
-vrf definition clab-mgmt
-description Containerlab management VRF (DO NOT DELETE)
-address-family ipv4
-exit
-address-family ipv6
-exit
-exit
-!
-ip route vrf clab-mgmt 0.0.0.0 0.0.0.0 {self.mgmt_gw_ipv4}
-ipv6 route vrf clab-mgmt ::/0 {self.mgmt_gw_ipv6}
-!
-interface GigabitEthernet0/0
-description Containerlab management interface
-vrf forwarding clab-mgmt
-ip address {v4_mgmt_address[0]} {v4_mgmt_address[1]}
-ipv6 address {self.mgmt_address_ipv6}
-no shut
-exit
-!
-crypto key generate rsa modulus 2048
-ip ssh version 2
-!
-netconf ssh
-netconf max-sessions 16
-snmp-server community public rw
-!
-no banner exec
-no banner login
-no banner incoming
-!   
-"""
-
         con = IOSXEDriver(**vios_scrapli_dev)
         con.commandeer(conn=self.scrapli_tn)
 
-        if os.path.exists(STARTUP_CONFIG_FILE):
-            self.logger.info("Startup configuration file found")
-            with open(STARTUP_CONFIG_FILE, "r") as config:
-                vios_config += config.read()
-        else:
-            self.logger.warning("User provided startup configuration is not found.")
-
-        res = con.send_configs(vios_config.splitlines())
-        res += con.send_commands(["write memory"])
+        if not os.path.exists(STARTUP_CONFIG_FILE):
+            self.logger.fatal("Failed to find startup configuration file")
+            con.close()
+            return
+        
+        with open(STARTUP_CONFIG_FILE, "r") as config:
+            res = con.send_configs(config.readlines())
+            res += con.send_commands(["write memory"])
 
         for response in res:
             self.logger.info(f"CONFIG:{response.channel_input}")
@@ -195,9 +167,9 @@ no banner incoming
 
 
 class VIOS(vrnetlab.VR):
-    def __init__(self, hostname: str, username: str, password: str, conn_mode: str):
+    def __init__(self, hostname: str, username: str, password: str, conn_mode: str, device_type: str = None):
         super(VIOS, self).__init__(username, password)
-        self.vms = [VIOS_vm(hostname, username, password, conn_mode)]
+        self.vms = [VIOS_vm(hostname, username, password, conn_mode, device_type)]
 
 
 if __name__ == "__main__":
@@ -217,12 +189,18 @@ if __name__ == "__main__":
         "--password", help="Password", default=os.getenv("PASSWORD", "admin")
     )
     parser.add_argument(
-        "--hostname", help="Router hostname", default=os.getenv("HOSTNAME", "vios")
+        "--hostname", help="Device hostname", default=os.getenv("HOSTNAME", "vios")
     )
     parser.add_argument(
         "--connection-mode",
         help="Connection mode to use in the datapath",
         default=os.getenv("CONNECTION_MODE", "tc"),
+    )
+    parser.add_argument(
+        "--type",
+        help="Device type (router or switch). If not specified, auto-detected from image filename.",
+        default=os.getenv("DEVICE_TYPE", None),
+        choices=["router", "switch"],
     )
     args = parser.parse_args()
 
@@ -239,5 +217,6 @@ if __name__ == "__main__":
         username=args.username,
         password=args.password,
         conn_mode=args.connection_mode,
+        device_type=args.type,
     )
     vr.start()
