@@ -65,6 +65,11 @@ class Debian_vm(vrnetlab.VM):
 
         self.qemu_args.extend(["-cdrom", "/" + self.image_name])
 
+
+#        logger.debug(
+#                f"acting flags: username '{args.username}', password '{args.password}', connection-mode '{args.connection_mode}', mgmt-passthourgh: '{self.mgmt_passthrough}'"
+#    )
+
         if "ADD_DISK" in os.environ:
             disk_size = os.getenv("ADD_DISK")
 
@@ -93,13 +98,15 @@ class Debian_vm(vrnetlab.VM):
             # Disable cloud-init for the subsequent boots
             cfg_file.write("runcmd:\n")
             cfg_file.write("  - touch /etc/cloud/cloud-init.disabled\n")
+            cfg_file.write("  - mkdir /config\n")
+            cfg_file.write("  - mount -t virtiofs myconfigfs /config\n")
 
         with open("/network_config.yaml", "w") as net_cfg_file:
             net_cfg_file.write("version: 2\n")
             net_cfg_file.write("ethernets:\n")
             net_cfg_file.write("  enp1s0:\n")
-            net_cfg_file.write("    addresses: [10.0.0.15/24]\n")
-            net_cfg_file.write("    gateway4: 10.0.0.2\n")
+            net_cfg_file.write(f"    addresses: [ {self.mgmt_address_ipv4} ]\n")
+            net_cfg_file.write(f"    gateway4: {self.mgmt_gw_ipv4}\n")
             net_cfg_file.write("    nameservers:\n")
             net_cfg_file.write("        addresses: [ 9.9.9.9 ]\n")
 
@@ -162,8 +169,8 @@ class Debian_vm(vrnetlab.VM):
                 self.logger.debug("matched, login: ")
                 self.wait_write("", wait=None)
 
-                self.copy_and_run_startupscript()
                 self.copy_etc()
+                self.copy_and_run_startupscript()
                 self.restore_backup()
 
                 self.running = True
