@@ -3,7 +3,7 @@
 DEFAULT_USER="admin"
 DEFAULT_PASSWORD="admin"
 DOCKER_ETC_PATH=/config/etc
-REMOTE_TMP_PATH=/tmp/etc
+REMOTE_TMP_PATH=/tmp/
 # location of startup script in the docker container
 STARTUPSCRIPT=/config/startup.sh
 
@@ -80,7 +80,8 @@ copyetc() {
     if [ -d "$DOCKER_ETC_PATH" ]; then
 	echo "copy_etc_and_run_startupscript.sh copyetc(): Copying $DOCKER_ETC_PATH to vm..."
         # Copy /config/etc to /etc in the VM.
-        $SCP_CMD -r $DOCKER_ETC_PATH $HOST:$REMOTE_TMP_PATH && $SSH_CMD $HOST "sudo cp -r $REMOTE_TMP_PATH/* /etc" && $SSH_CMD $HOST "sudo shutdown -r now || true"
+#        $SCP_CMD -r $DOCKER_ETC_PATH $HOST:$REMOTE_TMP_PATH && $SSH_CMD $HOST "sudo cp -r $REMOTE_TMP_PATH/* /etc" && $SSH_CMD $HOST "sudo shutdown -r now || true"
+	$SCP_CMD -r $DOCKER_ETC_PATH $HOST:$REMOTE_TMP_PATH && $SSH_CMD $HOST "sudo cp -r $REMOTE_TMP_PATH/* /etc"
     else 
 	    echo "copy_etc_and_run_startupscript.sh copyetc(): $DOCKER_ETC_PATH not found. Nothing to upload."
     fi
